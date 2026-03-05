@@ -94,6 +94,21 @@
     messages.style.background = "#f9fafb";
     messages.style.display = "none";
 
+    const backRow = document.createElement("div");
+    backRow.style.display = "none";
+    backRow.style.padding = "6px 10px 0";
+
+    const backButton = document.createElement("button");
+    backButton.type = "button";
+    backButton.textContent = "← Back";
+    backButton.style.border = "none";
+    backButton.style.background = "transparent";
+    backButton.style.fontSize = "11px";
+    backButton.style.cursor = "pointer";
+    backButton.style.color = "#6b7280";
+
+    backRow.appendChild(backButton);
+
     const emailBar = document.createElement("div");
     emailBar.style.display = "none";
     emailBar.style.flexDirection = "column";
@@ -224,6 +239,7 @@
     form.appendChild(input);
     form.appendChild(sendBtn);
     panel.appendChild(header);
+    panel.appendChild(backRow);
     panel.appendChild(emailBar);
     panel.appendChild(quickLinks);
     panel.appendChild(messages);
@@ -232,6 +248,7 @@
     function showChatInterface() {
       quickLinks.style.display = "none";
       emailBar.style.display = "none";
+      backRow.style.display = "block";
       messages.style.display = "block";
       form.style.display = "flex";
       if (!messages.hasChildNodes()) {
@@ -240,11 +257,15 @@
     }
 
     addQuickLink("Chat with an agent", () => {
+      quickLinks.style.display = "none";
+      backRow.style.display = "none";
+      messages.style.display = "none";
+      form.style.display = "none";
+      emailBar.style.display = "flex";
       if (emailAddress) {
-        showChatInterface();
+        emailInput.value = emailAddress;
       } else {
-        quickLinks.style.display = "none";
-        emailBar.style.display = "flex";
+        emailInput.value = "";
       }
     });
 
@@ -263,6 +284,14 @@
         }
       }
       showChatInterface();
+    });
+
+    backButton.addEventListener("click", () => {
+      backRow.style.display = "none";
+      emailBar.style.display = "none";
+      messages.style.display = "none";
+      form.style.display = "none";
+      quickLinks.style.display = "flex";
     });
 
     button.addEventListener("click", () => {
