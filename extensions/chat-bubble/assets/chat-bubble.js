@@ -163,9 +163,9 @@
 
     const quickLinks = document.createElement("div");
     quickLinks.style.display = "flex";
-    quickLinks.style.flexWrap = "wrap";
-    quickLinks.style.gap = "4px";
-    quickLinks.style.padding = "6px 8px 6px 8px";
+    quickLinks.style.flexDirection = "column";
+    quickLinks.style.gap = "6px";
+    quickLinks.style.padding = "8px 10px";
     quickLinks.style.borderBottom = "1px solid #e5e7eb";
     quickLinks.style.background = "#f9fafb";
 
@@ -174,12 +174,14 @@
       link.type = "button";
       link.textContent = label;
       link.style.border = "1px solid #d1d5db";
-      link.style.borderRadius = "999px";
+      link.style.borderRadius = "8px";
       link.style.background = "#ffffff";
-      link.style.padding = "2px 8px";
+      link.style.padding = "6px 10px";
       link.style.fontSize = "11px";
       link.style.cursor = "pointer";
       link.style.color = "#111827";
+      link.style.textAlign = "left";
+      link.style.width = "100%";
       link.addEventListener("click", () => {
         if (typeof handlerOrPath === "function") {
           handlerOrPath();
