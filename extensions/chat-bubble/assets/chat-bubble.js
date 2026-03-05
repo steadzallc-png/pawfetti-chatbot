@@ -8,6 +8,9 @@
     const existing = document.querySelector("[data-pawfetti-chat-bubble]");
     if (existing) return;
 
+    let aiTurns = 0;
+    const MAX_AI_TURNS = 3;
+
     const container = document.createElement("div");
     container.dataset.pawfettiChatBubble = "true";
     container.style.position = "fixed";
@@ -211,6 +214,7 @@
     addQuickLink("Refund policy", "/policies/refund-policy");
     addQuickLink("Return policy", "/policies/return-policy");
     addQuickLink("Terms & conditions", "/policies/terms-of-service");
+    addQuickLink("Contact us", "/contact");
 
     const form = document.createElement("form");
     form.style.display = "none";
@@ -257,32 +261,6 @@
     }
 
     addQuickLink("Chat with an agent", () => {
-      quickLinks.style.display = "none";
-      backRow.style.display = "none";
-      messages.style.display = "none";
-      form.style.display = "none";
-      emailBar.style.display = "flex";
-      if (emailAddress) {
-        emailInput.value = emailAddress;
-      } else {
-        emailInput.value = "";
-      }
-    });
-
-    emailSkip.addEventListener("click", () => {
-      showChatInterface();
-    });
-
-    emailContinue.addEventListener("click", () => {
-      const value = emailInput.value.trim();
-      if (value) {
-        emailAddress = value;
-        try {
-          window.localStorage.setItem("pawfetti_chat_email", value);
-        } catch (_e) {
-          // Ignore storage errors
-        }
-      }
       showChatInterface();
     });
 
@@ -327,6 +305,14 @@
       addMessage(text, "user");
       input.value = "";
 
+      if (aiTurns >= MAX_AI_TURNS) {
+        addMessage(
+          "I’ve already answered a few questions in this session. For more help, please use the Contact us option so a human can assist you.",
+          "assistant"
+        );
+        return;
+      }
+
       try {
         addMessage("Thinking...", "assistant");
         const thinkingBubble = messages.lastChild;
@@ -346,6 +332,7 @@
         const data = await res.json();
         const reply = data && data.reply ? data.reply : "Sorry, I couldn't process that.";
         thinkingBubble.textContent = reply;
+        aiTurns += 1;
       } catch (error) {
         console.error("Pawfetti chat error:", error);
         addMessage("Sorry, something went wrong. Please try again.", "assistant");
