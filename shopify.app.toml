@@ -1,0 +1,26 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "3c3ed85e733b2dbf87f1f98ab9eca792"
+name = "Pawfetti Chatbot"
+application_url = "https://shopify.dev/apps/default-app-home"
+embedded = true
+handle = "pawfetti-chatbot"
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "pawfetti-ai-sandbox.myshopify.com"
+
+[webhooks]
+api_version = "2026-04"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/api/webhooks"
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = ""
+
+[auth]
+redirect_urls = [ "https://shopify.dev/apps/default-app-home/api/auth" ]

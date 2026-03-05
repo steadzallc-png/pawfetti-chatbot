@@ -1,0 +1,13 @@
+{
+  "name": "pawfetti-chatbot",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.44.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "nodemailer": "^8.0.1"
+  }
+}

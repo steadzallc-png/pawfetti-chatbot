@@ -1,0 +1,18 @@
+<div id="pawfetti-chat-root" data-endpoint="{{ block.settings.endpoint | escape }}"></div>
+<script src="{{ 'chat-bubble.js' | asset_url }}" defer="defer"></script>
+
+{% schema %}
+{
+  "name": "Pawfetti Chat Bubble",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "endpoint",
+      "label": "Chat API endpoint",
+      "default": "http://localhost:3000/api/chat"
+    }
+  ]
+}
+{% endschema %}
+
