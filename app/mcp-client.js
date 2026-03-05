@@ -4,7 +4,64 @@ import { searchCatalog, searchPolicies } from "./storefront-mcp-client.js";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+const BASE_URL = "https://pawfetti.steadza.com";
+const PAGES = {
+  contact: `${BASE_URL}/pages/contact-us`,
+  faq: `${BASE_URL}/pages/faq`,
+  shipping: `${BASE_URL}/pages/shipping-handling`,
+  refund: `${BASE_URL}/policies/refund-policy`,
+};
+
+/**
+ * If the message is a policy/customer-service question, return a reply with direct links.
+ * Otherwise return null so Gemini handles it.
+ */
+function getPolicyResponse(message) {
+  const lower = (message || "").toLowerCase().trim();
+  if (!lower) return null;
+
+  const hasRefund = /\b(refund|refunds|return|returns|exchange)\b/.test(lower);
+  const hasShipping = /\b(shipping|delivery|deliver|when will i get|how long.*ship|ship time|tracking)\b/.test(lower);
+  const hasOrderStatus = /\b(where is my order|order status|track my order|when will.*arrive)\b/.test(lower);
+  const hasFaq = /\b(faq|frequently asked|common questions)\b/.test(lower);
+  const hasContact = /\b(contact|reach|speak to|talk to|customer service|help me)\b/.test(lower);
+  const hasPolicy = /\b(policy|policies)\b/.test(lower);
+
+  // Refund / return
+  if (hasRefund) {
+    return `For refunds and returns, please see our Refund Policy: ${PAGES.refund}\n\nIf you have already submitted a return and want to check on it, or have more questions, reach out via our Contact page: ${PAGES.contact}`;
+  }
+
+  // Shipping / delivery time
+  if (hasShipping) {
+    return `For shipping times and delivery information, see our Shipping & Handling page: ${PAGES.shipping}\n\nFor order-specific questions (e.g. tracking), please use our Contact page: ${PAGES.contact}`;
+  }
+
+  // Order status / tracking
+  if (hasOrderStatus) {
+    return `To check on your order or get tracking information, please contact us through our Contact page. Our team will help you with the status of your order: ${PAGES.contact}`;
+  }
+
+  // General policy or FAQ
+  if (hasFaq) {
+    return `You can find answers to common questions on our FAQs page: ${PAGES.faq}\n\nFor anything else, use our Contact page: ${PAGES.contact}`;
+  }
+
+  if (hasContact) {
+    return `You can reach us through our Contact page: ${PAGES.contact}`;
+  }
+
+  if (hasPolicy) {
+    return `Here are our main policy pages:\n\n• Refund Policy: ${PAGES.refund}\n• Shipping & Handling: ${PAGES.shipping}\n• FAQs: ${PAGES.faq}\n\nFor specific questions, use our Contact page: ${PAGES.contact}`;
+  }
+
+  return null;
+}
+
 export async function processChatMessage(message, history) {
+  const policyReply = getPolicyResponse(message);
+  if (policyReply) return policyReply;
+
   const contents = [
     ...(Array.isArray(history) ? history : []),
     { role: "user", parts: [{ text: message }] },

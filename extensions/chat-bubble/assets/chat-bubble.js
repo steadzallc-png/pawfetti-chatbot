@@ -277,6 +277,12 @@
     });
 
     function addMessage(text, role) {
+      // Normalize simple Markdown links [label](url) to plain URLs so they become clickable.
+      const normalizedText = text.replace(
+        /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        "$2"
+      );
+
       const bubble = document.createElement("div");
       bubble.style.margin = "4px 0";
       bubble.style.padding = "6px 8px";
@@ -295,7 +301,7 @@
       }
 
       // Render text with clickable URLs and line breaks
-      const urlSplit = text.split(/(https?:\/\/[^\s]+)/g);
+      const urlSplit = normalizedText.split(/(https?:\/\/[^\s]+)/g);
       urlSplit.forEach((segment) => {
         if (!segment) return;
 
