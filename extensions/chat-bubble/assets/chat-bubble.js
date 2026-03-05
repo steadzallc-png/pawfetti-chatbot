@@ -211,10 +211,10 @@
       quickLinks.appendChild(link);
     }
 
-    addQuickLink("Refund policy", "/policies/refund-policy");
-    addQuickLink("Return policy", "/policies/return-policy");
-    addQuickLink("Terms & conditions", "/policies/terms-of-service");
-    addQuickLink("Contact us", "/contact");
+    addQuickLink("Contact us", "/pages/contact-us");
+    addQuickLink("FAQs", "/pages/faq");
+    addQuickLink("Shipping & Handling", "/pages/shipping-handling");
+    addQuickLink("Refund Policy", "/policies/refund-policy");
 
     const form = document.createElement("form");
     form.style.display = "none";
@@ -260,7 +260,7 @@
       }
     }
 
-    addQuickLink("Chat with an agent", () => {
+    addQuickLink("Chat", () => {
       showChatInterface();
     });
 
