@@ -278,12 +278,12 @@
 
     function addMessage(text, role) {
       const bubble = document.createElement("div");
-      bubble.textContent = text;
       bubble.style.margin = "4px 0";
       bubble.style.padding = "6px 8px";
       bubble.style.borderRadius = "10px";
       bubble.style.maxWidth = "90%";
       bubble.style.wordBreak = "break-word";
+
       if (role === "user") {
         bubble.style.background = "#111827";
         bubble.style.color = "#ffffff";
@@ -293,6 +293,31 @@
         bubble.style.color = "#111827";
         bubble.style.marginRight = "auto";
       }
+
+      // Render text with clickable URLs and line breaks
+      const urlSplit = text.split(/(https?:\/\/[^\s]+)/g);
+      urlSplit.forEach((segment) => {
+        if (!segment) return;
+
+        if (/^https?:\/\/[^\s]+$/.test(segment)) {
+          const link = document.createElement("a");
+          link.href = segment;
+          link.textContent = segment;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          link.style.color = role === "user" ? "#bfdbfe" : "#1d4ed8";
+          bubble.appendChild(link);
+        } else {
+          const lines = segment.split("\n");
+          lines.forEach((line, index) => {
+            bubble.appendChild(document.createTextNode(line));
+            if (index < lines.length - 1) {
+              bubble.appendChild(document.createElement("br"));
+            }
+          });
+        }
+      });
+
       messages.appendChild(bubble);
       messages.scrollTop = messages.scrollHeight;
     }
