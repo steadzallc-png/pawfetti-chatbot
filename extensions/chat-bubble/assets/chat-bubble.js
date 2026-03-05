@@ -306,13 +306,24 @@
         if (!segment) return;
 
         if (/^https?:\/\/[^\s]+$/.test(segment)) {
-          const link = document.createElement("a");
-          link.href = segment;
-          link.textContent = segment;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
-          link.style.color = role === "user" ? "#bfdbfe" : "#1d4ed8";
-          bubble.appendChild(link);
+          if (role === "assistant") {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.textContent = "Open link";
+            btn.style.display = "inline-block";
+            btn.style.marginTop = "4px";
+            btn.style.border = "1px solid #d1d5db";
+            btn.style.borderRadius = "8px";
+            btn.style.background = "#ffffff";
+            btn.style.padding = "4px 10px";
+            btn.style.fontSize = "11px";
+            btn.style.cursor = "pointer";
+            btn.style.color = "#111827";
+            btn.addEventListener("click", () => window.open(segment, "_blank", "noopener,noreferrer"));
+            bubble.appendChild(btn);
+          } else {
+            bubble.appendChild(document.createTextNode(segment));
+          }
         } else {
           const lines = segment.split("\n");
           lines.forEach((line, index) => {
@@ -362,7 +373,8 @@
 
         const data = await res.json();
         const reply = data && data.reply ? data.reply : "Sorry, I couldn't process that.";
-        thinkingBubble.textContent = reply;
+        messages.removeChild(thinkingBubble);
+        addMessage(reply, "assistant");
         aiTurns += 1;
       } catch (error) {
         console.error("Pawfetti chat error:", error);
