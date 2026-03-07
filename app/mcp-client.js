@@ -59,6 +59,29 @@ function getPolicyResponse(message) {
   return null;
 }
 
+/**
+ * Ensure catalog data has product URLs so the model can output them and the UI can show "Open link" buttons.
+ * Handles common shapes: { products: [...] }, or array of items. Each item gets productUrl: BASE_URL/products/handle.
+ */
+function enrichCatalogWithProductUrls(catalogResult) {
+  if (!catalogResult || !BASE_URL) return catalogResult;
+  const base = BASE_URL.replace(/\/$/, "");
+  const addUrl = (item) => {
+    if (!item || typeof item !== "object") return item;
+    const handle = item.handle ?? item.productHandle;
+    const url = item.url ?? item.productUrl ?? item.link;
+    const productUrl = url || (handle ? `${base}/products/${handle}` : null);
+    return { ...item, productUrl: productUrl || item.productUrl };
+  };
+  if (Array.isArray(catalogResult)) {
+    return catalogResult.map(addUrl);
+  }
+  if (catalogResult.products && Array.isArray(catalogResult.products)) {
+    return { ...catalogResult, products: catalogResult.products.map(addUrl) };
+  }
+  return addUrl(catalogResult);
+}
+
 export async function processChatMessage(message, history) {
   const policyReply = getPolicyResponse(message);
   if (policyReply) return policyReply;
@@ -73,7 +96,8 @@ export async function processChatMessage(message, history) {
     ]);
 
     if (catalogResult) {
-      const serialized = JSON.stringify(catalogResult);
+      const enriched = enrichCatalogWithProductUrls(catalogResult);
+      const serialized = JSON.stringify(enriched);
       catalogContext = serialized.slice(0, 1500);
     }
 
@@ -90,7 +114,9 @@ Our products are strictly classified into: Dog, Cat, Small Pets, and Pet Parents
 - If a customer asks for small animals, look for 'Small Pets' tags.
 - If they want clothing or car items for themselves, look for 'Pet Parents'.
 Use the Storefront MCP data provided to ground your answers in real products, policies, and store information.
-Be warm, professional, and do not use emojis.`;
+Be warm, professional, and do not use emojis.
+You cannot add items to the cart for the customer. If they ask to add something to cart, give them the product page URL (from catalog data or base ${BASE_URL}) so they can open it and add the item themselves. Do not promise to "add it" or "check inventory" on their behalf.
+When you recommend or mention a product from the catalog, you MUST include its full product page URL in your reply so the customer gets a clickable link. Use the productUrl field from the catalog, or if you only have a handle use: ${BASE_URL}/products/HANDLE. Put the URL on its own line.`;
 
   const extraContextParts = [];
   if (catalogContext) {

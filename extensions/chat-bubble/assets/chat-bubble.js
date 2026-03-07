@@ -10,6 +10,8 @@
 
     let aiTurns = 0;
     const MAX_AI_TURNS = 3;
+    /** Previous user/assistant turns sent to the API so the model keeps context. */
+    let conversationHistory = [];
 
     const container = document.createElement("div");
     container.dataset.pawfettiChatBubble = "true";
@@ -364,7 +366,7 @@
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message: text, history: [], email: emailAddress }),
+          body: JSON.stringify({ message: text, history: conversationHistory, email: emailAddress }),
         });
 
         if (!res.ok) {
@@ -375,6 +377,7 @@
         const reply = data && data.reply ? data.reply : "Sorry, I couldn't process that.";
         messages.removeChild(thinkingBubble);
         addMessage(reply, "assistant");
+        conversationHistory.push({ role: "user", content: text }, { role: "assistant", content: reply });
         aiTurns += 1;
       } catch (error) {
         console.error("Pawfetti chat error:", error);
