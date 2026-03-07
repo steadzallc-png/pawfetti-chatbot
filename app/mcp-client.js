@@ -1,8 +1,9 @@
 import "dotenv/config";
-import { GoogleGenAI } from "@google/genai";
 import { searchCatalog, searchPolicies } from "./storefront-mcp-client.js";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL = "llama-3.1-8b-instant";
 
 const BASE_URL = "https://pawfetti.steadza.com";
 const PAGES = {
@@ -62,11 +63,6 @@ export async function processChatMessage(message, history) {
   const policyReply = getPolicyResponse(message);
   if (policyReply) return policyReply;
 
-  const contents = [
-    ...(Array.isArray(history) ? history : []),
-    { role: "user", parts: [{ text: message }] },
-  ];
-
   let catalogContext = "";
   let policiesContext = "";
 
@@ -113,13 +109,37 @@ When answering, you may rely on the following live Storefront MCP data. If it's 
 ${extraContextParts.join("\n\n")}`
       : baseInstruction;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents,
-    config: {
-      systemInstruction,
+  if (!GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY is not set. Add it in Render (or .env) to use the chat.");
+  }
+
+  const messages = [
+    { role: "system", content: systemInstruction },
+    ...(Array.isArray(history) ? history : []).map((m) => ({
+      role: m.role === "user" ? "user" : "assistant",
+      content: typeof m.parts !== "undefined" ? (m.parts.find((p) => p.text)?.text ?? "") : (m.content ?? ""),
+    })),
+    { role: "user", content: message },
+  ];
+
+  const res = await fetch(GROQ_CHAT_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${GROQ_API_KEY}`,
     },
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      messages,
+    }),
   });
 
-  return typeof response.text === "function" ? response.text() : response.text;
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Groq API error ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const reply = data?.choices?.[0]?.message?.content;
+  return reply != null ? String(reply).trim() : "";
 }
