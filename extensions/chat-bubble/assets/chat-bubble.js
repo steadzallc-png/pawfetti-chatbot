@@ -10,8 +10,21 @@
 
     let aiTurns = 0;
     const MAX_AI_TURNS = 3;
-    /** Previous user/assistant turns sent to the API so the model keeps context. */
+    const HISTORY_STORAGE_KEY = "pawfetti_chat_history";
+    /** Previous user/assistant turns; restored from sessionStorage across pages. */
     let conversationHistory = [];
+    try {
+      const raw = sessionStorage.getItem(HISTORY_STORAGE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          conversationHistory = arr;
+          aiTurns = arr.filter((m) => m.role === "assistant").length;
+        }
+      }
+    } catch (_e) {
+      // Ignore parse/storage errors
+    }
 
     const container = document.createElement("div");
     container.dataset.pawfettiChatBubble = "true";
@@ -258,7 +271,11 @@
       messages.style.display = "block";
       form.style.display = "flex";
       if (!messages.hasChildNodes()) {
-        addMessage("Hi, I’m the Pawfetti assistant. How can I help you today?", "assistant");
+        if (conversationHistory.length > 0) {
+          conversationHistory.forEach((m) => addMessage(m.content, m.role));
+        } else {
+          addMessage("Hi, I’m the Pawfetti assistant. How can I help you today?", "assistant");
+        }
       }
     }
 
@@ -309,6 +326,7 @@
 
         if (/^https?:\/\/[^\s]+$/.test(segment)) {
           if (role === "assistant") {
+            const cleanUrl = segment.replace(/[.,;:)\]}\s]+$/, "");
             const btn = document.createElement("button");
             btn.type = "button";
             btn.textContent = "Open link";
@@ -321,7 +339,7 @@
             btn.style.fontSize = "11px";
             btn.style.cursor = "pointer";
             btn.style.color = "#111827";
-            btn.addEventListener("click", () => window.open(segment, "_blank", "noopener,noreferrer"));
+            btn.addEventListener("click", () => window.open(cleanUrl, "_blank", "noopener,noreferrer"));
             bubble.appendChild(btn);
           } else {
             bubble.appendChild(document.createTextNode(segment));
@@ -379,6 +397,9 @@
         addMessage(reply, "assistant");
         conversationHistory.push({ role: "user", content: text }, { role: "assistant", content: reply });
         aiTurns += 1;
+        try {
+          sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(conversationHistory));
+        } catch (_e) {}
       } catch (error) {
         console.error("Pawfetti chat error:", error);
         addMessage("Sorry, something went wrong. Please try again.", "assistant");
