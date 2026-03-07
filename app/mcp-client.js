@@ -60,6 +60,19 @@ function getPolicyResponse(message) {
 }
 
 /**
+ * MCP returns { content: [ { type: "text", text: "<json string>" } ], isError }.
+ * Extract and parse the inner JSON so we get { products, pagination, ... } for catalog.
+ */
+function parseMcpContent(mcpResult) {
+  if (!mcpResult?.content?.[0]?.text) return null;
+  try {
+    return JSON.parse(mcpResult.content[0].text);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Collect all valid product URLs from enriched catalog (flatten any structure).
  * Returns a Set of normalized URLs for allowlist checks.
  */
@@ -87,14 +100,16 @@ function getProductUrlAllowlist(enrichedCatalog) {
 
 /**
  * Remove from the reply any product URL that is not in the allowlist (stops hallucinated links).
+ * If allowlist is empty, strip all product URLs so we never show invented links.
  */
 function sanitizeProductLinks(reply, allowedProductUrls) {
-  if (!reply || allowedProductUrls.size === 0) return reply;
+  if (!reply) return reply;
   const base = BASE_URL.replace(/\/$/, "");
   const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const productUrlRegex = new RegExp(`${escapedBase}/products/[^\\s)\\]]+`, "gi");
   return reply
     .replace(productUrlRegex, (match) => {
+      if (allowedProductUrls.size === 0) return " ";
       const norm = match.trim().toLowerCase().replace(/\/$/, "").replace(/[.,;:)\]}\s]+$/, "");
       return allowedProductUrls.has(norm) ? match : " ";
     })
@@ -141,14 +156,18 @@ export async function processChatMessage(message, history) {
     ]);
 
     if (catalogResult) {
-      const enriched = enrichCatalogWithProductUrls(catalogResult);
-      allowedProductUrls = getProductUrlAllowlist(enriched);
-      const serialized = JSON.stringify(enriched);
-      catalogContext = serialized.slice(0, 1500);
+      const parsedCatalog = parseMcpContent(catalogResult);
+      if (parsedCatalog) {
+        const enriched = enrichCatalogWithProductUrls(parsedCatalog);
+        allowedProductUrls = getProductUrlAllowlist(enriched);
+        const serialized = JSON.stringify(enriched);
+        catalogContext = serialized.slice(0, 6000);
+      }
     }
 
     if (policiesResult) {
-      const serialized = JSON.stringify(policiesResult);
+      const parsedPolicies = parseMcpContent(policiesResult);
+      const serialized = parsedPolicies ? JSON.stringify(parsedPolicies) : JSON.stringify(policiesResult);
       policiesContext = serialized.slice(0, 1500);
     }
   } catch (error) {
@@ -162,7 +181,7 @@ Our products are strictly classified into: Dog, Cat, Small Pets, and Pet Parents
 Use the Storefront MCP data provided to ground your answers in real products, policies, and store information.
 Be warm, professional, and do not use emojis.
 You cannot add items to the cart for the customer. If they ask to add something to cart, give them the product page URL (from catalog data or base ${BASE_URL}) so they can open it and add the item themselves. Do not promise to "add it" or "check inventory" on their behalf.
-When recommending a product, you may ONLY use a productUrl that appears in the catalog results below. Do not create, guess, or invent any product URL or handle. If the customer asks for something not in the catalog results, say we don't have that exact product and suggest they browse the store or contact us—never give a product link for something not in the catalog.`;
+When recommending a product, you may ONLY use a productUrl that appears in the catalog results below. Do not create, guess, or invent any product URL or handle. Only mention products that are in the catalog—use the exact title and url from the JSON. Never make up product names (e.g. no "Pawfetti Oatmeal Dog Shampoo", "FURminator", "Oster" unless they appear in the catalog). If the customer asks for something not in the catalog results, say we don't have that exact product and suggest they browse the store or contact us—never give a product link for something not in the catalog.`;
 
   const extraContextParts = [];
   if (catalogContext) {
