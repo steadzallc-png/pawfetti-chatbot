@@ -60,6 +60,50 @@ function getPolicyResponse(message) {
 }
 
 /**
+ * Collect all valid product URLs from enriched catalog (flatten any structure).
+ * Returns a Set of normalized URLs for allowlist checks.
+ */
+function getProductUrlAllowlist(enrichedCatalog) {
+  const base = BASE_URL.replace(/\/$/, "").toLowerCase();
+  const allowed = new Set();
+  function collect(obj) {
+    if (!obj) return;
+    if (Array.isArray(obj)) {
+      obj.forEach(collect);
+      return;
+    }
+    if (typeof obj === "object") {
+      const url = obj.productUrl ?? obj.url ?? obj.link;
+      if (url && typeof url === "string") {
+        const norm = url.trim().toLowerCase().replace(/\/$/, "");
+        if (norm.startsWith(base + "/products/")) allowed.add(norm);
+      }
+      Object.values(obj).forEach(collect);
+    }
+  }
+  collect(enrichedCatalog);
+  return allowed;
+}
+
+/**
+ * Remove from the reply any product URL that is not in the allowlist (stops hallucinated links).
+ */
+function sanitizeProductLinks(reply, allowedProductUrls) {
+  if (!reply || allowedProductUrls.size === 0) return reply;
+  const base = BASE_URL.replace(/\/$/, "");
+  const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const productUrlRegex = new RegExp(`${escapedBase}/products/[^\\s)\\]]+`, "gi");
+  return reply
+    .replace(productUrlRegex, (match) => {
+      const norm = match.trim().toLowerCase().replace(/\/$/, "").replace(/[.,;:)\]}\s]+$/, "");
+      return allowedProductUrls.has(norm) ? match : " ";
+    })
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/  +/g, " ")
+    .trim();
+}
+
+/**
  * Ensure catalog data has product URLs so the model can output them and the UI can show "Open link" buttons.
  * Handles common shapes: { products: [...] }, or array of items. Each item gets productUrl: BASE_URL/products/handle.
  */
@@ -88,6 +132,7 @@ export async function processChatMessage(message, history) {
 
   let catalogContext = "";
   let policiesContext = "";
+  let allowedProductUrls = new Set();
 
   try {
     const [catalogResult, policiesResult] = await Promise.all([
@@ -97,6 +142,7 @@ export async function processChatMessage(message, history) {
 
     if (catalogResult) {
       const enriched = enrichCatalogWithProductUrls(catalogResult);
+      allowedProductUrls = getProductUrlAllowlist(enriched);
       const serialized = JSON.stringify(enriched);
       catalogContext = serialized.slice(0, 1500);
     }
@@ -116,7 +162,7 @@ Our products are strictly classified into: Dog, Cat, Small Pets, and Pet Parents
 Use the Storefront MCP data provided to ground your answers in real products, policies, and store information.
 Be warm, professional, and do not use emojis.
 You cannot add items to the cart for the customer. If they ask to add something to cart, give them the product page URL (from catalog data or base ${BASE_URL}) so they can open it and add the item themselves. Do not promise to "add it" or "check inventory" on their behalf.
-When you recommend or mention a product from the catalog, you MUST include its full product page URL in your reply so the customer gets a clickable link. Use the productUrl field from the catalog, or if you only have a handle use: ${BASE_URL}/products/HANDLE. Put the URL on its own line. Only use product URLs that appear in the catalog data—do not invent or guess URLs.`;
+When recommending a product, you may ONLY use a productUrl that appears in the catalog results below. Do not create, guess, or invent any product URL or handle. If the customer asks for something not in the catalog results, say we don't have that exact product and suggest they browse the store or contact us—never give a product link for something not in the catalog.`;
 
   const extraContextParts = [];
   if (catalogContext) {
@@ -167,5 +213,6 @@ ${extraContextParts.join("\n\n")}`
 
   const data = await res.json();
   const reply = data?.choices?.[0]?.message?.content;
-  return reply != null ? String(reply).trim() : "";
+  const rawReply = reply != null ? String(reply).trim() : "";
+  return sanitizeProductLinks(rawReply, allowedProductUrls);
 }
