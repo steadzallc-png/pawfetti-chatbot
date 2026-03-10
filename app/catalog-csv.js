@@ -1,9 +1,10 @@
 /**
  * Load product catalog from Shopify export CSV and search by title + description.
  * Used when USE_GROQ_MCP is off. CSV path: CATALOG_CSV_PATH or files/products_export_1.csv.
+ * Cache holds only handle, title, plain-text description, and minPrice (smaller than raw CSV).
  */
 
-import { readFileSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
 
 const DEFAULT_CSV_PATH = join(process.cwd(), "files", "products_export_1.csv");
@@ -105,12 +106,28 @@ function loadCatalog(csvPath = process.env.CATALOG_CSV_PATH || DEFAULT_CSV_PATH)
 }
 
 let cachedProducts = null;
+let cachedPath = null;
+let cachedMtimeMs = 0;
 
 function getProducts() {
-  if (cachedProducts === null) {
-    cachedProducts = loadCatalog();
-    console.log("[catalog-csv] Loaded", cachedProducts.length, "products");
+  const csvPath = process.env.CATALOG_CSV_PATH || DEFAULT_CSV_PATH;
+  let mtimeMs = 0;
+  try {
+    mtimeMs = statSync(csvPath).mtimeMs;
+  } catch (_e) {
+    // File missing or not readable; use cache if we have it
   }
+  if (
+    cachedProducts !== null &&
+    cachedPath === csvPath &&
+    (mtimeMs === 0 || cachedMtimeMs >= mtimeMs)
+  ) {
+    return cachedProducts;
+  }
+  cachedPath = csvPath;
+  cachedMtimeMs = mtimeMs || Date.now();
+  cachedProducts = loadCatalog(csvPath);
+  console.log("[catalog-csv] Loaded", cachedProducts.length, "products");
   return cachedProducts;
 }
 
