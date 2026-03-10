@@ -33,7 +33,8 @@ async function callStorefrontTool(name, args) {
       return null;
     }
 
-    return data.result ?? null;
+    const result = data.result ?? null;
+    return result;
   } catch (error) {
     console.error("Failed to call Storefront MCP tool:", error);
     return null;

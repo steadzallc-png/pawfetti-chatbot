@@ -1,9 +1,13 @@
 import "dotenv/config";
 import { searchCatalog, searchPolicies } from "./storefront-mcp-client.js";
+import { searchCatalogCsv } from "./catalog-csv.js";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.1-8b-instant";
+
+/** When "true" or "1", use MCP + Groq. Otherwise use CSV catalog only (no MCP, no Groq). */
+const USE_GROQ_MCP = process.env.USE_GROQ_MCP === "true" || process.env.USE_GROQ_MCP === "1";
 
 const BASE_URL = "https://pawfetti.steadza.com";
 const PAGES = {
@@ -12,6 +16,9 @@ const PAGES = {
   shipping: `${BASE_URL}/pages/shipping-handling`,
   refund: `${BASE_URL}/policies/refund-policy`,
 };
+
+/** Maximum MCP tool invocations per chat turn. We only use catalog + policies (2 tools). */
+const MAX_MCP_TOOL_CALLS = 2;
 
 /**
  * If the message is a policy/customer-service question, return a reply with direct links.
@@ -60,6 +67,34 @@ function getPolicyResponse(message) {
 }
 
 /**
+ * Generic greetings or very broad questions that don't need MCP or Groq. Return a canned reply with links.
+ */
+function getGenericResponse(message) {
+  const lower = (message || "").toLowerCase().trim();
+  if (!lower || lower.length > 120) return null;
+
+  const isGreeting = /^(hi|hello|hey|hiya|howdy)\s*\.?\!?$/i.test(lower) || /^hi\s+there\.?$/i.test(lower);
+  const isGenericHelp =
+    /^(what\s+can\s+you\s+do|what\s+do\s+you\s+do|how\s+can\s+you\s+help|help\s*\.?\!?|what\s+are\s+you)\s*\.?\!?$/i.test(lower) ||
+    /^(tell\s+me\s+about\s+(the\s+)?store|about\s+(the\s+)?store)\s*\.?\!?$/i.test(lower);
+
+  if (isGreeting || isGenericHelp) {
+    return `Hi! I can help with product questions, shipping, returns, and more. Browse our catalog: ${BASE_URL}/collections/all\n\nFor policies and FAQs: ${PAGES.faq}\nTo contact us: ${PAGES.contact}`;
+  }
+
+  return null;
+}
+
+/** Format CSV search hits into reply text: title, price, and link per product. */
+function formatCsvCatalogReply(hits) {
+  const lines = hits.map((p) => {
+    const priceStr = p.price ? ` ${p.price}` : "";
+    return `${p.title}${priceStr}\n${p.url}`;
+  });
+  return `Here are some products that might match:\n\n${lines.join("\n\n")}\n\nNeed something else? Browse our catalog or contact us: ${PAGES.contact}`;
+}
+
+/**
  * MCP returns { content: [ { type: "text", text: "<json string>" } ], isError }.
  * Extract and parse the inner JSON so we get { products, pagination, ... } for catalog.
  */
@@ -70,6 +105,47 @@ function parseMcpContent(mcpResult) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Normalize the user message into a shorter search query for MCP. The store search often
+ * returns no results for long questions like "what cat grooming products do you have?"
+ * but returns results for "cat grooming products". Strip question wrappers and punctuation.
+ */
+function normalizeSearchQuery(message) {
+  if (!message || typeof message !== "string") return message;
+  let q = message.trim().replace(/\?+\.*$/, "").trim();
+  const prefixes = [
+    /^what\s+/i,
+    /^how\s+/i,
+    /^can you\s+(show\s+me\s+|find\s+me\s+)?/i,
+    /^could you\s+(show\s+me\s+|find\s+me\s+)?/i,
+    /^do you have\s+/i,
+    /^do you\s+(have\s+)?/i,
+    /^show me\s+/i,
+    /^i want\s+(to\s+see\s+)?/i,
+    /^i('m| am)\s+looking for\s+/i,
+    /^tell me\s+(about\s+)?/i,
+    /^get me\s+/i,
+  ];
+  for (const re of prefixes) {
+    q = q.replace(re, "").trim();
+  }
+  const suffixes = [
+    /\s+do you have\s*$/i,
+    /\s+do you sell\s*$/i,
+    /\s+can you show\s+(me\s+)?\s*$/i,
+    /\s+are there\s*$/i,
+    /\s+for me\s*$/i,
+    /\s+please\s*$/i,
+    /\s+thanks\.?\s*$/i,
+    /\s+thank you\.?\s*$/i,
+  ];
+  for (const re of suffixes) {
+    q = q.replace(re, "").trim();
+  }
+  q = q.replace(/\s+/g, " ").trim();
+  return q || message;
 }
 
 /**
@@ -101,13 +177,14 @@ function getProductUrlAllowlist(enrichedCatalog) {
 /**
  * Remove from the reply any product URL that is not in the allowlist (stops hallucinated links).
  * If allowlist is empty, strip all product URLs so we never show invented links.
+ * Also removes broken phrases left when a URL is stripped (e.g. "the product URL is" with nothing after).
  */
 function sanitizeProductLinks(reply, allowedProductUrls) {
   if (!reply) return reply;
   const base = BASE_URL.replace(/\/$/, "");
   const escapedBase = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const productUrlRegex = new RegExp(`${escapedBase}/products/[^\\s)\\]]+`, "gi");
-  return reply
+  let out = reply
     .replace(productUrlRegex, (match) => {
       if (allowedProductUrls.size === 0) return " ";
       const norm = match.trim().toLowerCase().replace(/\/$/, "").replace(/[.,;:)\]}\s]+$/, "");
@@ -116,6 +193,12 @@ function sanitizeProductLinks(reply, allowedProductUrls) {
     .replace(/\n{3,}/g, "\n\n")
     .replace(/  +/g, " ")
     .trim();
+  // Remove broken phrases left when a hallucinated URL was stripped
+  out = out
+    .replace(/\n*(the product url is|you can find it at|available at|product link:)\s*$/gim, "")
+    .replace(/\s*,\s*$/g, "")
+    .trim();
+  return out;
 }
 
 /**
@@ -141,24 +224,60 @@ function enrichCatalogWithProductUrls(catalogResult) {
   return addUrl(catalogResult);
 }
 
-export async function processChatMessage(message, history) {
+export async function processChatMessage(message, history, options = {}) {
+  const debug = options.debug ? { productTitles: [], allowedUrlCount: 0, rawReply: "" } : null;
   const policyReply = getPolicyResponse(message);
   if (policyReply) return policyReply;
+
+  const genericReply = getGenericResponse(message);
+  if (genericReply) return genericReply;
+
+  // CSV-only mode: no MCP, no Groq. Search catalog and return links or "contact us".
+  if (!USE_GROQ_MCP) {
+    const searchQuery = normalizeSearchQuery(message);
+    const hits = searchCatalogCsv(searchQuery, BASE_URL);
+    if (debug) {
+      debug.productTitles = hits.map((p) => p.title);
+      debug.allowedUrlCount = hits.length;
+      debug.rawReply = "(CSV mode: no Groq)";
+      return {
+        reply:
+          hits.length > 0
+            ? formatCsvCatalogReply(hits)
+            : `I couldn't find specific products for that search. You can browse our catalog here: ${BASE_URL}/collections/all\n\nFor help with an order or other questions, contact us: ${PAGES.contact}`,
+        debug,
+      };
+    }
+    return hits.length > 0
+      ? formatCsvCatalogReply(hits)
+      : `I couldn't find specific products for that search. You can browse our catalog here: ${BASE_URL}/collections/all\n\nFor help with an order or other questions, contact us: ${PAGES.contact}`;
+  }
 
   let catalogContext = "";
   let policiesContext = "";
   let allowedProductUrls = new Set();
+  let parsedCatalog = null;
+  let enriched = null;
 
   try {
-    const [catalogResult, policiesResult] = await Promise.all([
-      searchCatalog(message),
-      searchPolicies(message),
-    ]);
+    const searchQuery = normalizeSearchQuery(message);
+    const mcpCallSpecs = [
+      { key: "catalog", fn: () => searchCatalog(searchQuery) },
+      { key: "policies", fn: () => searchPolicies(searchQuery) },
+    ].slice(0, MAX_MCP_TOOL_CALLS);
+
+    const results = await Promise.all(mcpCallSpecs.map((s) => s.fn()));
+    let catalogResult = null;
+    let policiesResult = null;
+    mcpCallSpecs.forEach((spec, i) => {
+      if (spec.key === "catalog") catalogResult = results[i];
+      else if (spec.key === "policies") policiesResult = results[i];
+    });
 
     if (catalogResult) {
-      const parsedCatalog = parseMcpContent(catalogResult);
+      parsedCatalog = parseMcpContent(catalogResult);
       if (parsedCatalog) {
-        const enriched = enrichCatalogWithProductUrls(parsedCatalog);
+        enriched = enrichCatalogWithProductUrls(parsedCatalog);
         allowedProductUrls = getProductUrlAllowlist(enriched);
         const serialized = JSON.stringify(enriched);
         catalogContext = serialized.slice(0, 6000);
@@ -174,29 +293,53 @@ export async function processChatMessage(message, history) {
     console.error("Error calling Storefront MCP tools:", error);
   }
 
-  const baseInstruction = `You are a helpful pet shop assistant. The name of the shop is Pawfetti.
-Our products are strictly classified into: Dog, Cat, Small Pets, and Pet Parents.
-- If a customer asks for small animals, look for 'Small Pets' tags.
-- If they want clothing or car items for themselves, look for 'Pet Parents'.
-Use the Storefront MCP data provided to ground your answers in real products, policies, and store information.
-Be warm, professional, and do not use emojis.
-You cannot add items to the cart for the customer. If they ask to add something to cart, give them the product page URL (from catalog data or base ${BASE_URL}) so they can open it and add the item themselves. Do not promise to "add it" or "check inventory" on their behalf.
-When recommending a product, you may ONLY use a productUrl that appears in the catalog results below. Do not create, guess, or invent any product URL or handle. Only mention products that are in the catalog—use the exact title and url from the JSON. Never make up product names (e.g. no "Pawfetti Oatmeal Dog Shampoo", "FURminator", "Oster" unless they appear in the catalog). If the customer asks for something not in the catalog results, say we don't have that exact product and suggest they browse the store or contact us—never give a product link for something not in the catalog.`;
+  const baseInstruction = `You are the Pawfetti pet shop assistant. Be warm, professional, and concise. No emojis.
+
+RULES:
+1. You may ONLY recommend products that appear in the "Products you may recommend" list below. Use the exact title and the exact URL from that list. Do not invent or guess any product name or URL.
+2. When you recommend a product, you MUST put the product's URL on its own line so the customer gets a clickable link. Format: one line of text, then a blank line, then the URL on the next line.
+3. If the customer asks for something not in the list, say we don't have that exact product and suggest they browse the store or contact us. Do not make up products (e.g. no FURminator, Oster, or other brands unless they appear in the list).
+4. You cannot add items to the cart. If they ask to add to cart, give them the product URL so they can open it and add the item themselves.
+5. For refunds, shipping, order status, FAQ, or contact—point them to the right page; we will provide those links in context when relevant.`;
+
+  /** Build a strict allowlist text so the model only recommends real catalog products. */
+  let productListText = "";
+  const products = enriched?.products ?? (Array.isArray(enriched) ? enriched : parsedCatalog?.products) ?? [];
+  if (Array.isArray(products) && products.length > 0) {
+    const lines = products
+      .filter((p) => p && (p.productUrl || p.url))
+      .map((p) => `${p.title || p.name || "Product"}\n${p.productUrl || p.url}`);
+    if (lines.length)
+      productListText = `\n\nProducts you may recommend (use ONLY these; copy title and URL exactly):\n\n${lines.join("\n\n")}`;
+  }
+
+  // No products from MCP: don't call Groq—return safe canned reply so we never show invented products
+  if (!productListText) {
+    const canned =
+      `I couldn't find specific products for that search. You can browse our catalog here: ${BASE_URL}/collections/all\n\nFor help with an order or other questions, contact us: ${PAGES.contact}`;
+    if (debug) {
+      debug.productTitles = [];
+      debug.allowedUrlCount = 0;
+      debug.rawReply = "(canned: no catalog results)";
+      return { reply: canned, debug };
+    }
+    return canned;
+  }
 
   const extraContextParts = [];
+  if (productListText) {
+    extraContextParts.push(productListText);
+  }
   if (catalogContext) {
-    extraContextParts.push(`Catalog search results (JSON): ${catalogContext}`);
+    extraContextParts.push(`Extra catalog detail (for description/tags only; still recommend only from the list above):\n${catalogContext}`);
   }
   if (policiesContext) {
-    extraContextParts.push(`Policy and FAQ search results (JSON): ${policiesContext}`);
+    extraContextParts.push(`Policies/FAQ: ${policiesContext}`);
   }
 
   const systemInstruction =
     extraContextParts.length > 0
       ? `${baseInstruction}
-
-When answering, you may rely on the following live Storefront MCP data. If it's relevant to the question, prefer it over guesses.
-
 ${extraContextParts.join("\n\n")}`
       : baseInstruction;
 
@@ -233,5 +376,14 @@ ${extraContextParts.join("\n\n")}`
   const data = await res.json();
   const reply = data?.choices?.[0]?.message?.content;
   const rawReply = reply != null ? String(reply).trim() : "";
-  return sanitizeProductLinks(rawReply, allowedProductUrls);
+  const sanitized = sanitizeProductLinks(rawReply, allowedProductUrls);
+
+  if (debug) {
+    const products = enriched?.products ?? (Array.isArray(enriched) ? enriched : parsedCatalog?.products) ?? [];
+    debug.productTitles = products.filter((p) => p && (p.title || p.name)).map((p) => p.title || p.name);
+    debug.allowedUrlCount = allowedProductUrls.size;
+    debug.rawReply = rawReply;
+    return { reply: sanitized, debug };
+  }
+  return sanitized;
 }

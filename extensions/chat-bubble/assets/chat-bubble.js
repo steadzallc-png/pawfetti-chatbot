@@ -90,12 +90,12 @@
 
     const headerTextWrap = document.createElement("div");
     const headerTitle = document.createElement("div");
-    headerTitle.textContent = "Ask me anything";
+    headerTitle.textContent = "Looking for a product?";
     headerTitle.style.fontSize = "13px";
     headerTitle.style.fontWeight = "600";
 
     const headerSubtitle = document.createElement("div");
-    headerSubtitle.textContent = "I can help with products, orders, and policies.";
+    headerSubtitle.textContent = "Ask us—we'll find it and share the link and price.";
     headerSubtitle.style.fontSize = "11px";
     headerSubtitle.style.opacity = "0.9";
 
@@ -237,7 +237,7 @@
 
     const input = document.createElement("input");
     input.type = "text";
-    input.placeholder = "Ask about products...";
+    input.placeholder = "Search for a product...";
     input.style.flex = "1";
     input.style.border = "none";
     input.style.padding = "8px 10px";
@@ -274,12 +274,12 @@
         if (conversationHistory.length > 0) {
           conversationHistory.forEach((m) => addMessage(m.content, m.role));
         } else {
-          addMessage("Hi, I’m the Pawfetti assistant. How can I help you today?", "assistant");
+          addMessage("Looking for a product? Type what you need and we'll show matches with link and price.", "assistant");
         }
       }
     }
 
-    addQuickLink("Chat", () => {
+    addQuickLink("Looking for a product? Ask us", () => {
       showChatInterface();
     });
 
