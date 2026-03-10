@@ -19,6 +19,8 @@ const PAGES = {
 
 /** Maximum MCP tool invocations per chat turn. We only use catalog + policies (2 tools). */
 const MAX_MCP_TOOL_CALLS = 2;
+/** Max assistant replies per session when using AI (Groq); not applied in CSV-only mode. */
+const MAX_AI_TURNS = 3;
 
 /**
  * If the message is a policy/customer-service question, return a reply with direct links.
@@ -251,6 +253,14 @@ export async function processChatMessage(message, history, options = {}) {
     return hits.length > 0
       ? formatCsvCatalogReply(hits)
       : `I couldn't find specific products for that search. You can browse our catalog here: ${BASE_URL}/collections/all\n\nFor help with an order or other questions, contact us: ${PAGES.contact}`;
+  }
+
+  // AI (Groq) path only: enforce 3-reply limit per session; CSV path has no limit
+  const aiAssistantTurns = Array.isArray(history) ? history.filter((m) => m && m.role === "assistant").length : 0;
+  if (aiAssistantTurns >= MAX_AI_TURNS) {
+    const limitMessage =
+      "I've already answered a few questions in this session. For more help, please use the Contact us option so a human can assist you.";
+    return debug ? { reply: limitMessage, debug } : limitMessage;
   }
 
   let catalogContext = "";

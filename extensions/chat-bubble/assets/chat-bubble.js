@@ -8,8 +8,6 @@
     const existing = document.querySelector("[data-pawfetti-chat-bubble]");
     if (existing) return;
 
-    let aiTurns = 0;
-    const MAX_AI_TURNS = 3;
     const HISTORY_STORAGE_KEY = "pawfetti_chat_history";
     /** Previous user/assistant turns; restored from sessionStorage across pages. */
     let conversationHistory = [];
@@ -19,7 +17,6 @@
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) {
           conversationHistory = arr;
-          aiTurns = arr.filter((m) => m.role === "assistant").length;
         }
       }
     } catch (_e) {
@@ -367,13 +364,6 @@
       addMessage(text, "user");
       input.value = "";
 
-      if (aiTurns >= MAX_AI_TURNS) {
-        addMessage(
-          "I’ve already answered a few questions in this session. For more help, please use the Contact us option so a human can assist you.",
-          "assistant"
-        );
-        return;
-      }
 
       try {
         addMessage("Thinking...", "assistant");
@@ -396,7 +386,6 @@
         messages.removeChild(thinkingBubble);
         addMessage(reply, "assistant");
         conversationHistory.push({ role: "user", content: text }, { role: "assistant", content: reply });
-        aiTurns += 1;
         try {
           sessionStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(conversationHistory));
         } catch (_e) {}
