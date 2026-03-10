@@ -8,6 +8,35 @@
     const existing = document.querySelector("[data-pawfetti-chat-bubble]");
     if (existing) return;
 
+    // Responsive styles so panel and button fit on mobile
+    const style = document.createElement("style");
+    style.textContent = `
+      @media (max-width: 480px) {
+        [data-pawfetti-chat-bubble] {
+          right: 12px !important;
+          bottom: 12px !important;
+        }
+        [data-pawfetti-chat-panel] {
+          left: 12px !important;
+          right: 12px !important;
+          width: calc(100vw - 24px) !important;
+          max-width: calc(100vw - 24px) !important;
+          bottom: 72px !important;
+          height: 70vh !important;
+          max-height: 70vh !important;
+        }
+        [data-pawfetti-chat-messages] {
+          min-height: 0 !important;
+          flex: 1 1 0 !important;
+          -webkit-overflow-scrolling: touch;
+        }
+        [data-pawfetti-chat-panel] input {
+          font-size: 16px !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
     const HISTORY_STORAGE_KEY = "pawfetti_chat_history";
     /** Previous user/assistant turns; restored from sessionStorage across pages. */
     let conversationHistory = [];
@@ -52,6 +81,7 @@
     button.appendChild(buttonIcon);
 
     const panel = document.createElement("div");
+    panel.dataset.pawfettiChatPanel = "true";
     panel.style.position = "fixed";
     panel.style.bottom = "76px";
     panel.style.right = "20px";
@@ -102,6 +132,7 @@
     header.appendChild(headerTextWrap);
 
     const messages = document.createElement("div");
+    messages.dataset.pawfettiChatMessages = "true";
     messages.style.flex = "1";
     messages.style.padding = "8px 10px 10px";
     messages.style.overflowY = "auto";
@@ -238,7 +269,7 @@
     input.style.flex = "1";
     input.style.border = "none";
     input.style.padding = "8px 10px";
-    input.style.fontSize = "13px";
+    input.style.fontSize = "16px";
     input.style.outline = "none";
 
     const sendBtn = document.createElement("button");
